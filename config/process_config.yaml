@@ -1,0 +1,140 @@
+# =============================================================================
+# process_config.yaml  --  THE SINGLE SOURCE OF TRUTH
+# =============================================================================
+# ACTIVE DATASET: REAL gas-turbine combustion data (UCI id 551, 36,733 rows).
+# This file was produced by SWAPPING the config for the real factory-style CSV
+# -- no code in src/ changed. The prior physics-synthetic contract is preserved
+# at config/process_config.synthetic.yaml for reference.
+#
+# Fetch the data with:   python -m src.fetch_real_data
+# Then run the pipeline:  python run_pipeline.py
+#
+# ROLES:
+#   controllable -> a combustion lever the operator/control system tunes
+#                   (the optimizer searches these within their limits)
+#   fixed        -> a condition the operator cannot set on demand
+#                   (weather + the dispatched load TEY)
+#   target       -> the emissions KPI we predict and minimize
+#
+# IMPORTANT CAVEAT (read before trusting recommendations):
+#   This is OBSERVATIONAL historian data, not a controlled experiment. The model
+#   learns CORRELATIONS, not causation. Recommended setpoints are "conditions
+#   historically associated with lower NOx", not guaranteed causal improvements,
+#   and the optimizer's box search can visit variable combinations that never
+#   co-occurred in reality. Treat output as decision support, not autopilot.
+# =============================================================================
+
+dataset:
+  name: gas_turbine_nox
+  # Real data. Set to "synthetic" to have run_pipeline.py regenerate the
+  # physics dataset via src/generate_data.py instead of using this file as-is.
+  source: real
+  path: data/gas_turbine_nox.csv
+  # Only used when source == synthetic:
+  n_synthetic_rows: 10000
+  random_seed: 42
+
+preprocess:
+  test_size: 0.2
+  impute_strategy: median
+  # Real data is clean, but keep a small tolerance band so a genuine sensor
+  # glitch in future exports is winsorised to the operating limits, not dropped.
+  outlier_clip_tolerance: 0.0
+
+model:
+  params:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.9
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+    min_child_weight: 3
+  artifact_path: artifacts/model.json
+  metadata_path: artifacts/model_meta.json
+
+optimizer:
+  n_trials: 250
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# COLUMN CONTRACT  (keys match the UCI CSV headers exactly)
+# Operating limits below are the rounded observed min/max of the real data, so
+# no genuine reading is clipped and the optimizer/UI cover the real envelope.
+# (The undeclared column CO is simply ignored by the pipeline.)
+# -----------------------------------------------------------------------------
+columns:
+
+  # ---- Controllable combustion levers (optimizer decision variables) --------
+  TIT:
+    role: controllable
+    unit: "degC"
+    description: "Turbine inlet temperature (primary combustion temperature)."
+    min: 1000.0
+    max: 1101.0
+
+  TAT:
+    role: controllable
+    unit: "degC"
+    description: "Turbine after (exhaust) temperature."
+    min: 511.0
+    max: 551.0
+
+  AFDP:
+    role: controllable
+    unit: "mbar"
+    description: "Air filter differential pressure."
+    min: 2.0
+    max: 7.7
+
+  GTEP:
+    role: controllable
+    unit: "mbar"
+    description: "Gas turbine exhaust pressure."
+    min: 17.5
+    max: 41.0
+
+  CDP:
+    role: controllable
+    unit: "mbar"
+    description: "Compressor discharge pressure."
+    min: 9.8
+    max: 15.2
+
+  # ---- Fixed conditions: weather + dispatched load --------------------------
+  AT:
+    role: fixed
+    unit: "degC"
+    description: "Ambient temperature."
+    min: -7.0
+    max: 38.0
+
+  AP:
+    role: fixed
+    unit: "mbar"
+    description: "Ambient pressure."
+    min: 985.0
+    max: 1037.0
+
+  AH:
+    role: fixed
+    unit: "%"
+    description: "Ambient humidity."
+    min: 24.0
+    max: 101.0
+
+  TEY:
+    role: fixed
+    unit: "MWH"
+    description: "Turbine energy yield (dispatched electrical load)."
+    min: 100.0
+    max: 180.0
+
+  # ---- Target ---------------------------------------------------------------
+  NOX:
+    role: target
+    unit: "mg/m3"
+    description: "Nitrogen oxides emissions (lower is better)."
+    min: 0.0
+    max: 120.0
+    direction: minimize

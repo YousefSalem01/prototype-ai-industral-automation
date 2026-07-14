@@ -1,0 +1,125 @@
+# =============================================================================
+# process_config.yaml  --  THE SINGLE SOURCE OF TRUTH
+# =============================================================================
+# This file is the CONTRACT between the raw factory CSV and every line of code
+# in this project. No column name, unit, role, or operating limit is hard-coded
+# anywhere in `src/`. All of it lives here.
+#
+# TO SWAP IN THE REAL FACTORY CSV:
+#   1. Point `dataset.path` at the new file (or overwrite data/process_data.csv).
+#   2. Rename the keys under `columns:` to match the real CSV headers.
+#   3. Set the correct `role`, `unit`, and physical operating `min`/`max` limits.
+#   4. Leave the target's `direction` as maximize/minimize as appropriate.
+#   NOTHING in src/ needs to change. schema.py will validate the new file
+#   against this contract and fail loudly if it does not conform.
+#
+# ROLES:
+#   controllable -> a setpoint an engineer can dial (the optimizer searches these)
+#   fixed        -> a measured operating condition the engineer cannot set
+#                   (feed properties, weather); the optimizer holds these constant
+#   target       -> the quality KPI we predict and optimize
+# =============================================================================
+
+dataset:
+  name: furnace_quality
+  path: data/process_data.csv
+  # Number of synthetic rows generate_data.py produces. Ignored for real data.
+  n_synthetic_rows: 10000
+  random_seed: 42
+
+preprocess:
+  # Fraction of rows held out for the test set.
+  test_size: 0.2
+  # Strategy for imputing missing values in numeric columns.
+  # One of: median | mean
+  impute_strategy: median
+  # Rows are FLAGGED as outliers if a value falls outside
+  # [min - tol, max + tol] where tol = outlier_clip_tolerance * (max - min).
+  # Flagged values are clipped back into the operating range (winsorized),
+  # never dropped -- a real sensor glitch should not silently delete a row.
+  outlier_clip_tolerance: 0.0
+
+model:
+  # XGBoost hyperparameters. Kept modest; tune later against real data.
+  params:
+    n_estimators: 400
+    max_depth: 5
+    learning_rate: 0.05
+    subsample: 0.9
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+    min_child_weight: 3
+  artifact_path: artifacts/model.json
+  metadata_path: artifacts/model_meta.json
+
+optimizer:
+  # Optuna settings for the setpoint search.
+  n_trials: 200
+  # TPESampler seed for reproducible recommendations.
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# COLUMN CONTRACT
+# Each key MUST match a column header in the CSV exactly.
+# -----------------------------------------------------------------------------
+columns:
+
+  # ---- Controllable setpoints (the optimizer's decision variables) ----------
+  gas_temperature:
+    role: controllable
+    unit: "degC"
+    description: "Kiln burner / gas outlet temperature."
+    min: 800.0
+    max: 1500.0
+
+  oxygen_pct:
+    role: controllable
+    unit: "%"
+    description: "Excess oxygen in flue gas (combustion air proxy)."
+    min: 1.0
+    max: 10.0
+
+  flow_rate:
+    role: controllable
+    unit: "m3/h"
+    description: "Combustion / process air flow rate."
+    min: 500.0
+    max: 3000.0
+
+  furnace_speed:
+    role: controllable
+    unit: "rpm"
+    description: "Kiln rotation speed (governs material residence time)."
+    min: 1.0
+    max: 6.0
+
+  # ---- Fixed operating conditions (measured, not settable) -------------------
+  feed_rate:
+    role: fixed
+    unit: "t/h"
+    description: "Raw material feed rate into the kiln."
+    min: 50.0
+    max: 200.0
+
+  material_moisture:
+    role: fixed
+    unit: "%"
+    description: "Moisture content of incoming raw material."
+    min: 0.5
+    max: 15.0
+
+  ambient_temp:
+    role: fixed
+    unit: "degC"
+    description: "Ambient air temperature around the plant."
+    min: -10.0
+    max: 45.0
+
+  # ---- Target ----------------------------------------------------------------
+  quality_score:
+    role: target
+    unit: "score"
+    description: "Product quality KPI, 0 (reject) to 100 (ideal clinker)."
+    min: 0.0
+    max: 100.0
+    direction: maximize

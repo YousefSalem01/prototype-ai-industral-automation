@@ -1,0 +1,22 @@
+{
+  "features": [
+    "gas_temperature",
+    "oxygen_pct",
+    "flow_rate",
+    "furnace_speed",
+    "feed_rate",
+    "material_moisture",
+    "ambient_temp"
+  ],
+  "target": "quality_score",
+  "impute_values": {
+    "gas_temperature": 1278.944438395483,
+    "oxygen_pct": 3.808068526420781,
+    "flow_rate": 1562.243612911337,
+    "furnace_speed": 3.2834407715613585,
+    "feed_rate": 124.72080871276151,
+    "material_moisture": 7.848156651584499,
+    "ambient_temp": 17.644952629569833,
+    "quality_score": 51.89650732631093
+  }
+}
