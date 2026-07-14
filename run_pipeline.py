@@ -16,7 +16,6 @@ from __future__ import annotations
 import pandas as pd
 
 from src.explain import QualityExplainer
-from src.fetch_real_data import main as fetch_real_data_main
 from src.generate_data import main as generate_data_main
 from src.model import QualityModel, train_from_csv
 from src.optimizer import optimize_setpoints
@@ -33,19 +32,10 @@ def _rule(title: str) -> None:
 def main() -> None:
     config = load_config()
 
-    # 1. Obtain data. The `source` flag in the config decides whether we
-    #    regenerate the physics-synthetic dataset or use/fetch the real one.
-    source = config.section("dataset").get("source", "synthetic")
-    if source == "synthetic":
-        _rule("STEP 1/6  Generate physics-based synthetic data")
-        generate_data_main()
-    else:
-        _rule("STEP 1/6  Obtain REAL dataset")
-        if config.data_path.exists():
-            print(f"[data] using existing real dataset at {config.data_path}")
-        else:
-            print("[data] real dataset missing -- fetching...")
-            fetch_real_data_main()
+    # 1. Generate synthetic data (skipped conceptually when real CSV present;
+    #    here we always regenerate so the demo is self-contained).
+    _rule("STEP 1/6  Generate physics-based synthetic data")
+    generate_data_main()
 
     # 2. Load + validate against the config contract.
     _rule("STEP 2/6  Validate CSV against config contract")

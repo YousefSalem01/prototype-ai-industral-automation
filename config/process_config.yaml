@@ -1,50 +1,49 @@
 # =============================================================================
 # process_config.yaml  --  THE SINGLE SOURCE OF TRUTH
 # =============================================================================
-# ACTIVE DATASET: REAL gas-turbine combustion data (UCI id 551, 36,733 rows).
-# This file was produced by SWAPPING the config for the real factory-style CSV
-# -- no code in src/ changed. The prior physics-synthetic contract is preserved
-# at config/process_config.synthetic.yaml for reference.
+# This file is the CONTRACT between the raw factory CSV and every line of code
+# in this project. No column name, unit, role, or operating limit is hard-coded
+# anywhere in `src/`. All of it lives here.
 #
-# Fetch the data with:   python -m src.fetch_real_data
-# Then run the pipeline:  python run_pipeline.py
+# TO SWAP IN THE REAL FACTORY CSV:
+#   1. Point `dataset.path` at the new file (or overwrite data/process_data.csv).
+#   2. Rename the keys under `columns:` to match the real CSV headers.
+#   3. Set the correct `role`, `unit`, and physical operating `min`/`max` limits.
+#   4. Leave the target's `direction` as maximize/minimize as appropriate.
+#   NOTHING in src/ needs to change. schema.py will validate the new file
+#   against this contract and fail loudly if it does not conform.
 #
 # ROLES:
-#   controllable -> a combustion lever the operator/control system tunes
-#                   (the optimizer searches these within their limits)
-#   fixed        -> a condition the operator cannot set on demand
-#                   (weather + the dispatched load TEY)
-#   target       -> the emissions KPI we predict and minimize
-#
-# IMPORTANT CAVEAT (read before trusting recommendations):
-#   This is OBSERVATIONAL historian data, not a controlled experiment. The model
-#   learns CORRELATIONS, not causation. Recommended setpoints are "conditions
-#   historically associated with lower NOx", not guaranteed causal improvements,
-#   and the optimizer's box search can visit variable combinations that never
-#   co-occurred in reality. Treat output as decision support, not autopilot.
+#   controllable -> a setpoint an engineer can dial (the optimizer searches these)
+#   fixed        -> a measured operating condition the engineer cannot set
+#                   (feed properties, weather); the optimizer holds these constant
+#   target       -> the quality KPI we predict and optimize
 # =============================================================================
 
 dataset:
-  name: gas_turbine_nox
-  # Real data. Set to "synthetic" to have run_pipeline.py regenerate the
-  # physics dataset via src/generate_data.py instead of using this file as-is.
-  source: real
-  path: data/gas_turbine_nox.csv
-  # Only used when source == synthetic:
+  name: furnace_quality
+  path: data/process_data.csv
+  # Number of synthetic rows generate_data.py produces. Ignored for real data.
   n_synthetic_rows: 10000
   random_seed: 42
 
 preprocess:
+  # Fraction of rows held out for the test set.
   test_size: 0.2
+  # Strategy for imputing missing values in numeric columns.
+  # One of: median | mean
   impute_strategy: median
-  # Real data is clean, but keep a small tolerance band so a genuine sensor
-  # glitch in future exports is winsorised to the operating limits, not dropped.
+  # Rows are FLAGGED as outliers if a value falls outside
+  # [min - tol, max + tol] where tol = outlier_clip_tolerance * (max - min).
+  # Flagged values are clipped back into the operating range (winsorized),
+  # never dropped -- a real sensor glitch should not silently delete a row.
   outlier_clip_tolerance: 0.0
 
 model:
+  # XGBoost hyperparameters. Kept modest; tune later against real data.
   params:
-    n_estimators: 500
-    max_depth: 6
+    n_estimators: 400
+    max_depth: 5
     learning_rate: 0.05
     subsample: 0.9
     colsample_bytree: 0.9
@@ -54,87 +53,73 @@ model:
   metadata_path: artifacts/model_meta.json
 
 optimizer:
-  n_trials: 250
+  # Optuna settings for the setpoint search.
+  n_trials: 200
+  # TPESampler seed for reproducible recommendations.
   seed: 42
 
 # -----------------------------------------------------------------------------
-# COLUMN CONTRACT  (keys match the UCI CSV headers exactly)
-# Operating limits below are the rounded observed min/max of the real data, so
-# no genuine reading is clipped and the optimizer/UI cover the real envelope.
-# (The undeclared column CO is simply ignored by the pipeline.)
+# COLUMN CONTRACT
+# Each key MUST match a column header in the CSV exactly.
 # -----------------------------------------------------------------------------
 columns:
 
-  # ---- Controllable combustion levers (optimizer decision variables) --------
-  TIT:
+  # ---- Controllable setpoints (the optimizer's decision variables) ----------
+  gas_temperature:
     role: controllable
     unit: "degC"
-    description: "Turbine inlet temperature (primary combustion temperature)."
-    min: 1000.0
-    max: 1101.0
+    description: "Kiln burner / gas outlet temperature."
+    min: 800.0
+    max: 1500.0
 
-  TAT:
+  oxygen_pct:
     role: controllable
-    unit: "degC"
-    description: "Turbine after (exhaust) temperature."
-    min: 511.0
-    max: 551.0
+    unit: "%"
+    description: "Excess oxygen in flue gas (combustion air proxy)."
+    min: 1.0
+    max: 10.0
 
-  AFDP:
+  flow_rate:
     role: controllable
-    unit: "mbar"
-    description: "Air filter differential pressure."
-    min: 2.0
-    max: 7.7
+    unit: "m3/h"
+    description: "Combustion / process air flow rate."
+    min: 500.0
+    max: 3000.0
 
-  GTEP:
+  furnace_speed:
     role: controllable
-    unit: "mbar"
-    description: "Gas turbine exhaust pressure."
-    min: 17.5
-    max: 41.0
+    unit: "rpm"
+    description: "Kiln rotation speed (governs material residence time)."
+    min: 1.0
+    max: 6.0
 
-  CDP:
-    role: controllable
-    unit: "mbar"
-    description: "Compressor discharge pressure."
-    min: 9.8
-    max: 15.2
-
-  # ---- Fixed conditions: weather + dispatched load --------------------------
-  AT:
+  # ---- Fixed operating conditions (measured, not settable) -------------------
+  feed_rate:
     role: fixed
-    unit: "degC"
-    description: "Ambient temperature."
-    min: -7.0
-    max: 38.0
+    unit: "t/h"
+    description: "Raw material feed rate into the kiln."
+    min: 50.0
+    max: 200.0
 
-  AP:
-    role: fixed
-    unit: "mbar"
-    description: "Ambient pressure."
-    min: 985.0
-    max: 1037.0
-
-  AH:
+  material_moisture:
     role: fixed
     unit: "%"
-    description: "Ambient humidity."
-    min: 24.0
-    max: 101.0
+    description: "Moisture content of incoming raw material."
+    min: 0.5
+    max: 15.0
 
-  TEY:
+  ambient_temp:
     role: fixed
-    unit: "MWH"
-    description: "Turbine energy yield (dispatched electrical load)."
-    min: 100.0
-    max: 180.0
+    unit: "degC"
+    description: "Ambient air temperature around the plant."
+    min: -10.0
+    max: 45.0
 
-  # ---- Target ---------------------------------------------------------------
-  NOX:
+  # ---- Target ----------------------------------------------------------------
+  quality_score:
     role: target
-    unit: "mg/m3"
-    description: "Nitrogen oxides emissions (lower is better)."
+    unit: "score"
+    description: "Product quality KPI, 0 (reject) to 100 (ideal clinker)."
     min: 0.0
-    max: 120.0
-    direction: minimize
+    max: 100.0
+    direction: maximize
