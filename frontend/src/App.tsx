@@ -8,13 +8,27 @@ import { Slider } from './components/Slider'
 type State = Record<string, number>
 
 const LABELS: Record<string, string> = {
-  gas_temperature: 'Gas Temperature',
-  oxygen_pct: 'Oxygen',
-  flow_rate: 'Air Flow Rate',
-  furnace_speed: 'Furnace Speed',
-  feed_rate: 'Feed Rate',
-  material_moisture: 'Material Moisture',
-  ambient_temp: 'Ambient Temp',
+  "% Iron Feed": "Iron Feed - نسبة تغذية الحديد",
+  "% Silica Feed": "Silica Feed - نسبة تغذية السيليكا",
+  "Ore Pulp Flow": "Ore Pulp Flow - تدفق خام اللب",
+  "Ore Pulp Density": "Ore Pulp Density - كثافة خام اللب",
+  "Starch Flow": "Starch Flow - تدفق النشا",
+  "Amina Flow": "Amina Flow - تدفق الأمينا",
+  "Ore Pulp pH": "Ore Pulp pH - درجة الحموضة (pH)",
+  "Flotation Column 01 Air Flow": "Col 1 Air Flow - تدفق هواء عمود 1",
+  "Flotation Column 02 Air Flow": "Col 2 Air Flow - تدفق هواء عمود 2",
+  "Flotation Column 03 Air Flow": "Col 3 Air Flow - تدفق هواء عمود 3",
+  "Flotation Column 04 Air Flow": "Col 4 Air Flow - تدفق هواء عمود 4",
+  "Flotation Column 05 Air Flow": "Col 5 Air Flow - تدفق هواء عمود 5",
+  "Flotation Column 06 Air Flow": "Col 6 Air Flow - تدفق هواء عمود 6",
+  "Flotation Column 07 Air Flow": "Col 7 Air Flow - تدفق هواء عمود 7",
+  "Flotation Column 01 Level": "Col 1 Level - مستوى رغوة عمود 1",
+  "Flotation Column 02 Level": "Col 2 Level - مستوى رغوة عمود 2",
+  "Flotation Column 03 Level": "Col 3 Level - مستوى رغوة عمود 3",
+  "Flotation Column 04 Level": "Col 4 Level - مستوى رغوة عمود 4",
+  "Flotation Column 05 Level": "Col 5 Level - مستوى رغوة عمود 5",
+  "Flotation Column 06 Level": "Col 6 Level - مستوى رغوة عمود 6",
+  "Flotation Column 07 Level": "Col 7 Level - مستوى رغوة عمود 7",
 }
 const nice = (n: string) => LABELS[n] ?? n
 
@@ -94,6 +108,8 @@ export default function App() {
     [meta],
   )
 
+  const minimize = meta?.target.direction === 'minimize'
+  const targetName = meta?.target.name ?? 'quality'
   const maxShap = Math.max(1e-6, ...(explain?.contributions.map((c) => Math.abs(c.shap)) ?? [1]))
 
   return (
@@ -105,8 +121,8 @@ export default function App() {
             🏭
           </div>
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">Furnace Quality Optimizer</h1>
-            <p className="text-xs text-slate-500">AI setpoint recommendations · cement / kiln process</p>
+            <h1 className="text-lg font-semibold tracking-tight">Flotation Plant Quality Optimizer</h1>
+            <p className="text-xs text-slate-500">AI setpoint recommendations · iron-ore froth flotation (real plant data)</p>
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 text-xs">
@@ -155,13 +171,21 @@ export default function App() {
 
         {/* CENTER: Live quality + optimize */}
         <section className="space-y-5 lg:col-span-4">
-          <Panel title="Predicted Quality" subtitle="Live model inference">
+          <Panel
+            title="Predicted Quality"
+            subtitle={
+              minimize
+                ? `${targetName} · live inference · lower is better`
+                : `${targetName} · live inference · higher is better`
+            }
+          >
             <Gauge
               value={live ?? 0}
               min={meta?.target.min ?? 0}
               max={meta?.target.max ?? 100}
-              label={meta?.target.name ?? 'quality'}
+              label={`${targetName} (${meta?.target.unit ?? ''})`}
               compareTo={opt ? opt.current_quality : null}
+              betterIsLow={minimize}
             />
             <button
               onClick={runOptimize}
@@ -221,19 +245,21 @@ export default function App() {
               <div className="space-y-2">
                 {explain.contributions.map((c) => {
                   const w = (Math.abs(c.shap) / maxShap) * 100
-                  const pos = c.shap >= 0
+                  // Colour by effect on QUALITY, not the raw target sign:
+                  // for a minimize target, a negative SHAP (lowers impurity) is good.
+                  const good = c.direction === 'improves'
                   return (
                     <div key={c.feature}>
                       <div className="mb-0.5 flex justify-between text-xs">
                         <span className="text-slate-300">{nice(c.feature)}</span>
-                        <span className={`font-mono ${pos ? 'text-emerald-300' : 'text-red-300'}`}>
-                          {pos ? '+' : ''}
+                        <span className={`font-mono ${good ? 'text-emerald-300' : 'text-red-300'}`}>
+                          {c.shap >= 0 ? '+' : ''}
                           {c.shap.toFixed(2)}
                         </span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-panel">
                         <div
-                          className={`h-full rounded-full ${pos ? 'bg-emerald-400' : 'bg-red-400'}`}
+                          className={`h-full rounded-full ${good ? 'bg-emerald-400' : 'bg-red-400'}`}
                           style={{ width: `${w}%`, transition: 'width 0.4s ease' }}
                         />
                       </div>

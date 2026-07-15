@@ -174,6 +174,40 @@ class ProcessConfig:
         """Return a top-level config section (e.g. ``model``, ``optimizer``)."""
         return self._raw.get(key, {})
 
+    @property
+    def source(self) -> str:
+        """Dataset source: ``real`` (use CSV as-is) or ``synthetic`` (generate)."""
+        return self.section("dataset").get("source", "synthetic")
+
+    @property
+    def csv_read_kwargs(self) -> dict[str, Any]:
+        """Extra pandas.read_csv kwargs for this dataset (decimal, sep, ...)."""
+        return dict(self.section("dataset").get("csv_read_kwargs", {}))
+
+    @property
+    def time_column(self) -> str | None:
+        """Optional timestamp column used for a time-ordered train/test split."""
+        return self.section("preprocess").get("time_column")
+
+
+def load_raw_dataframe(config: ProcessConfig,
+                       path: str | Path | None = None) -> pd.DataFrame:
+    """Read the dataset CSV honouring config-declared read options.
+
+    Real factory exports vary (European decimal commas, alternate delimiters,
+    encodings). Those quirks are declared in ``dataset.csv_read_kwargs`` so the
+    swap stays config-only -- no code edits per dataset.
+
+    Args:
+        config: The process configuration.
+        path: Optional override of the dataset path.
+
+    Returns:
+        The raw DataFrame (all columns, unmodified).
+    """
+    csv_path = Path(path) if path else config.data_path
+    return pd.read_csv(csv_path, **config.csv_read_kwargs)
+
 
 def _default_config_path() -> Path:
     """Locate ``config/process_config.yaml`` relative to this file."""

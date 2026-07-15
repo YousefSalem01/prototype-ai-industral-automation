@@ -1,0 +1,24 @@
+# Data files
+data/*.csv
+data/*.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+.env
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

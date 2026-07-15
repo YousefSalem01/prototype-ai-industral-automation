@@ -8,6 +8,15 @@ tuning gas temperature, oxygen, flow, and kiln speed by hand.
 This is an MVP built to be *swapped onto real factory data* with a config edit
 and nothing else.
 
+> **Active dataset: REAL plant data.** The project currently runs on the Kaggle
+> *"Quality Prediction in a Mining Process"* dataset — a real Brazilian iron-ore
+> **froth-flotation plant** (737,453 rows of 20-second sensor readings). Target:
+> **% Silica Concentrate** (impurity in the final concentrate, *minimize*).
+> The original synthetic-furnace contract is preserved in
+> `config/process_config.synthetic.yaml`. Switching between them is a one-file
+> change — proof of the contract design below. See
+> [Real-data notes](#real-data-notes-what-honest-modelling-looks-like).
+
 ---
 
 ## The core design principle: the CSV is a contract
@@ -164,6 +173,54 @@ only to compute the improvement delta. Recommended setpoints are guaranteed to
 lie within the config operating limits.
 
 A C# sketch is included in the header comment of [`src/api.py`](src/api.py).
+
+---
+
+## Real-data notes: what honest modelling looks like
+
+Swapping the real flotation plant in surfaced two issues that are worth
+understanding — they're the difference between a demo and a defensible model.
+
+**1. Sensor/lab time-scale mismatch → aggregation.** The plant logs sensors
+every 20 seconds but measures silica in the lab **hourly**, so ~180 consecutive
+rows share one target value. Left alone, a random train/test split places the
+same hour in *both* sets and the label "leaks" — you get a fake R² ≈ 0.95. The
+config sets `preprocess.aggregate_by: date`, averaging each hour into one
+**independent** row (737k → 4,097 rows). Honest result:
+
+| Split | R² (held-out) | Meaning |
+|---|---|---|
+| Hourly + random | **0.36** (MAE 0.68% silica) | Current sensors explain ~36% of silica variance — real, leak-free. |
+| Hourly + time-ordered | 0.06 | Predicting *future* periods is much harder — the plant is non-stationary. |
+
+The app runs the honest **0.36** model. The low time-split number isn't a bug —
+it's the true difficulty of forecasting a drifting process, and worth saying out
+loud.
+
+**2. Observational data → correlation, not causation.** This is a historian
+log, not a designed experiment. The model learns "settings historically
+*associated* with lower silica," which is not the same as a guaranteed causal
+lever, and the optimizer can push toward corners of the 17-setpoint space the
+plant never actually visited (predictions there are extrapolation). For real
+deployment you'd add trust-region constraints and validate recommendations with
+controlled plant trials. For a decision-support demo it's exactly right — it
+*recommends*, the engineer decides.
+
+**Leakage guard.** `% Iron Concentrate` (the co-product of the target) and
+`date` are deliberately **not** declared as feature columns — including the
+co-product would be target leakage.
+
+### Switching datasets (proof of the contract)
+
+```bash
+# back to the synthetic furnace:
+cp config/process_config.synthetic.yaml config/process_config.yaml && python run_pipeline.py
+```
+
+No `src/` code changes — only the YAML. The generic ingestion knobs that made
+the real swap possible (`dataset.csv_read_kwargs` for European decimals,
+`dataset.source`, `preprocess.aggregate_by`, `preprocess.split`) all live in the
+config.
 
 ---
 

@@ -19,8 +19,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 # pyrefly: ignore [missing-import]
 from xgboost import XGBRegressor
 
-from .preprocess import clean_dataframe, prepare_state, train_test_split_xy
-from .schema import ProcessConfig, validate_dataframe
+from .preprocess import (aggregate_dataframe, clean_dataframe, prepare_state,
+                         train_test_split_xy)
+from .schema import ProcessConfig, load_raw_dataframe, validate_dataframe
 
 
 @dataclass
@@ -167,10 +168,10 @@ def train_from_csv(config: ProcessConfig,
     Returns:
         ``(model, metrics)``.
     """
-    path = Path(csv_path) if csv_path else config.data_path
-    df = pd.read_csv(path)
+    df = load_raw_dataframe(config, path=csv_path)
     # Validate presence/dtype before cleaning; skip range check (cleaning clips).
     validate_dataframe(df, config, require_target=True, check_ranges=False)
+    df = aggregate_dataframe(df, config)
     df_clean, report = clean_dataframe(df, config)
     print(f"[preprocess] {report.summary()}")
     model = QualityModel(config=config, impute_values=report.impute_values)

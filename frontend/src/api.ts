@@ -39,7 +39,8 @@ export interface Contribution {
   unit: string
   value: number
   shap: number
-  direction: 'increases' | 'decreases'
+  target_effect: 'increases' | 'decreases' // effect on the raw target value
+  direction: 'improves' | 'worsens' // effect on QUALITY (direction-aware)
 }
 
 export interface Explanation {

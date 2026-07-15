@@ -6,17 +6,27 @@ interface GaugeProps {
   max?: number
   label?: string
   compareTo?: number | null // optional "before" marker
+  betterIsLow?: boolean // true for a minimize target (e.g. impurity %)
 }
 
-function color(pct: number): string {
-  if (pct >= 0.75) return '#34d399'
-  if (pct >= 0.5) return '#fbbf24'
+function color(goodness: number): string {
+  if (goodness >= 0.66) return '#34d399'
+  if (goodness >= 0.4) return '#fbbf24'
   return '#f87171'
 }
 
-export function Gauge({ value, min = 0, max = 100, label = 'Quality', compareTo = null }: GaugeProps) {
+export function Gauge({
+  value,
+  min = 0,
+  max = 100,
+  label = 'Quality',
+  compareTo = null,
+  betterIsLow = false,
+}: GaugeProps) {
   const clamped = Math.max(min, Math.min(max, value))
   const pct = (clamped - min) / (max - min)
+  // "goodness" drives the colour: for a minimize target, a low value is good.
+  const goodness = betterIsLow ? 1 - pct : pct
   const R = 90
   const CX = 110
   const CY = 110
@@ -50,7 +60,7 @@ export function Gauge({ value, min = 0, max = 100, label = 'Quality', compareTo 
         <path
           d={`M ${sx} ${sy} A ${R} ${R} 0 ${pct > 0.5 ? 1 : 0} 1 ${vx} ${vy}`}
           fill="none"
-          stroke={color(pct)}
+          stroke={color(goodness)}
           strokeWidth={16}
           strokeLinecap="round"
           style={{ transition: 'all 0.5s cubic-bezier(0.22,1,0.36,1)' }}
@@ -73,15 +83,15 @@ export function Gauge({ value, min = 0, max = 100, label = 'Quality', compareTo 
           y1={ny}
           x2={vx}
           y2={vy}
-          stroke={color(pct)}
+          stroke={color(goodness)}
           strokeWidth={3}
           strokeLinecap="round"
           style={{ transition: 'all 0.5s cubic-bezier(0.22,1,0.36,1)' }}
         />
-        <circle cx={CX} cy={CY} r={6} fill={color(pct)} />
+        <circle cx={CX} cy={CY} r={6} fill={color(goodness)} />
       </svg>
       <div className="-mt-6 text-center">
-        <div className="text-5xl font-bold tabular-nums" style={{ color: color(pct) }}>
+        <div className="text-5xl font-bold tabular-nums" style={{ color: color(goodness) }}>
           {value.toFixed(1)}
         </div>
         <div className="mt-1 text-xs uppercase tracking-widest text-slate-400">{label}</div>

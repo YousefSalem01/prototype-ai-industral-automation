@@ -120,6 +120,29 @@ def clean_dataframe(df: pd.DataFrame, config: ProcessConfig,
     return df, report
 
 
+def aggregate_dataframe(df: pd.DataFrame, config: ProcessConfig) -> pd.DataFrame:
+    """Optionally resample rows by a grouping column, taking column means.
+
+    Driven by ``preprocess.aggregate_by``. Needed when a fast sensor stream is
+    paired with a slow lab measurement: e.g. this plant logs sensors every 20s
+    but measures quality hourly, so ~180 rows share one target. Averaging each
+    group to a single row yields genuinely independent samples (no repeated
+    label leaking across a train/test split) and denoises the sensors.
+
+    Args:
+        df: Raw DataFrame (already schema-validated).
+        config: The process configuration.
+
+    Returns:
+        The aggregated DataFrame, or ``df`` unchanged if no ``aggregate_by`` set.
+    """
+    agg_col = config.section("preprocess").get("aggregate_by")
+    if not agg_col or agg_col not in df.columns:
+        return df
+    declared = [c for c in config.columns if c in df.columns]
+    return df.groupby(agg_col, sort=True, as_index=False)[declared].mean()
+
+
 def split_xy(df: pd.DataFrame, config: ProcessConfig
              ) -> tuple[pd.DataFrame, pd.Series]:
     """Split a clean DataFrame into feature matrix X and target vector y."""
@@ -132,12 +155,32 @@ def train_test_split_xy(df: pd.DataFrame, config: ProcessConfig
                         ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Produce a reproducible train/test split of features and target.
 
+    Two strategies, chosen by ``preprocess.split``:
+      * ``random`` (default): shuffled split -- fine for i.i.d. rows.
+      * ``time``: sort by ``preprocess.time_column`` and hold out the most
+        RECENT fraction as the test set. Use this when consecutive rows share a
+        label (e.g. hourly lab value repeated across 20s sensor rows): a random
+        split would place the same period in both train and test and inflate R².
+        A time split also mirrors production -- train on the past, score the
+        future.
+
     Returns:
         ``(X_train, X_test, y_train, y_test)``.
     """
     pp = config.section("preprocess")
     test_size = float(pp.get("test_size", 0.2))
     seed = int(config.section("dataset").get("random_seed", 42))
+    strategy = pp.get("split", "random")
+    time_col = config.time_column
+
+    if strategy == "time" and time_col and time_col in df.columns:
+        ordered = df.sort_values(time_col, kind="stable")
+        X, y = split_xy(ordered, config)
+        n_test = int(round(len(ordered) * test_size))
+        split_at = len(ordered) - n_test
+        return (X.iloc[:split_at], X.iloc[split_at:],
+                y.iloc[:split_at], y.iloc[split_at:])
+
     X, y = split_xy(df, config)
     return train_test_split(X, y, test_size=test_size, random_state=seed)
 

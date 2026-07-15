@@ -83,16 +83,24 @@ class QualityExplainer:
         base = float(np.ravel(self._explainer.expected_value)[0])
         prediction = base + float(np.sum(shap_values))
 
+        # A positive SHAP pushes the TARGET up. Whether that helps quality
+        # depends on the optimization direction: for a 'minimize' target
+        # (e.g. impurity %), pushing the target down is what improves quality.
+        minimize = self.config.target_direction == "minimize"
         contributions = []
         for i, feat in enumerate(self.config.features):
             contrib = float(shap_values[i])
+            improves = (contrib < 0) if minimize else (contrib > 0)
             contributions.append({
                 "feature": feat,
                 "role": self.config.columns[feat].role,
                 "unit": self.config.columns[feat].unit,
                 "value": float(X.iloc[0, i]),
                 "shap": contrib,
-                "direction": "increases" if contrib >= 0 else "decreases",
+                # Effect on the TARGET value (raw SHAP sign):
+                "target_effect": "increases" if contrib >= 0 else "decreases",
+                # Effect on QUALITY (direction-aware, what the UI colours by):
+                "direction": "improves" if improves else "worsens",
             })
         contributions.sort(key=lambda c: abs(c["shap"]), reverse=True)
 

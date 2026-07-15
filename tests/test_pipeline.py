@@ -25,8 +25,14 @@ from src.schema import SchemaError, load_config, validate_dataframe
 
 @pytest.fixture(scope="module")
 def config():
-    """Load the real project config once per module."""
-    return load_config()
+    """Load the SYNTHETIC config for generator-based tests.
+
+    The synthetic generator (generate_data.py) is intrinsically the furnace
+    model, so these tests target the synthetic contract explicitly regardless of
+    which dataset is currently 'active' in process_config.yaml.
+    """
+    root = Path(__file__).resolve().parents[1]
+    return load_config(root / "config" / "process_config.synthetic.yaml")
 
 
 @pytest.fixture(scope="module")
@@ -159,3 +165,18 @@ def test_optimizer_requires_fixed_conditions(small_config, tmp_path):
     # Missing all fixed conditions.
     with pytest.raises(ValueError, match="fixed conditions not provided"):
         optimize_setpoints(model, {"gas_temperature": 1200.0}, small_config)
+
+
+# --- active (real) config: contract still holds against the real CSV ---------
+def test_active_config_conforms_to_real_csv():
+    """The currently-active config must validate against its real dataset.
+
+    Reads only a head slice so this stays fast; proves the config-as-contract
+    swap is intact (columns present, numeric, honouring csv_read_kwargs).
+    """
+    cfg = load_config()  # whatever is active in process_config.yaml
+    df = pd.read_csv(cfg.data_path, nrows=2000, **cfg.csv_read_kwargs)
+    validate_dataframe(df, cfg, require_target=True, check_ranges=False)
+    assert cfg.target_direction in ("minimize", "maximize")
+    assert len(cfg.controllable) >= 1
+    assert cfg.target in df.columns

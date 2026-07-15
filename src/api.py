@@ -51,7 +51,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -59,8 +58,8 @@ from pydantic import BaseModel, Field
 from .explain import QualityExplainer
 from .model import QualityModel, load_model
 from .optimizer import optimize_setpoints
-from .preprocess import clean_dataframe, split_xy
-from .schema import ProcessConfig, load_config
+from .preprocess import aggregate_dataframe, clean_dataframe, split_xy
+from .schema import ProcessConfig, load_config, load_raw_dataframe
 
 app = FastAPI(
     title="Industrial Quality Optimizer",
@@ -194,10 +193,11 @@ def importance() -> dict[str, Any]:
     if _importance_cache is None:
         cfg = _get_config()
         try:
-            df = pd.read_csv(cfg.data_path)
+            df = load_raw_dataframe(cfg)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=503,
                                 detail=f"Dataset not found: {exc}") from exc
+        df = aggregate_dataframe(df, cfg)
         df_clean, _ = clean_dataframe(df, cfg)
         X, _ = split_xy(df_clean, cfg)
         _importance_cache = _get_explainer().global_importance(X)
